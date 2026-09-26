@@ -250,3 +250,15 @@ describe("getCapabilitiesForModel — codebuddy-cn provider overrides", () => {
     expect(caps.thinkingFormat).toBe("deepseek");
   });
 });
+
+describe("getCapabilitiesForModel — Step 3.7 vision (#3590)", () => {
+  it("step-3.7 flash keeps vision (specific pattern beats generic *step-*)", () => {
+    const caps = getCapabilitiesForModel("nvidia", "stepfun-ai/step-3.7-flash");
+    expect(caps.vision).toBe(true);
+    expect(caps.thinkingFormat).toBe("step");
+  });
+
+  it("other step models stay text-only", () => {
+    expect(getCapabilitiesForModel("nvidia", "stepfun-ai/step-3.5-flash").vision).toBe(false);
+  });
+});
