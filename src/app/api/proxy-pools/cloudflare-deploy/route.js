@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
+import { probeRelayWithRetry } from "@/lib/network/relayProbe";
 
 // Relay worker source code deployed to Cloudflare
 const RELAY_WORKER_CODE = `
@@ -124,6 +125,16 @@ export async function POST(request) {
        return NextResponse.json(
         { error: "Worker deployed but failed to retrieve workers.dev subdomain. Make sure you have setup a workers.dev subdomain in Cloudflare Dashboard." },
         { status: 400 }
+      );
+    }
+
+    // #1037: probe before saving — a workers.dev URL that answers with the
+    // relay's 400 "Missing x-relay-target" contract proves it is live.
+    const probe = await probeRelayWithRetry(deployUrl);
+    if (!probe.healthy) {
+      return NextResponse.json(
+        { error: `Worker deployed but the health probe failed (status ${probe.status}${probe.error ? `, ${probe.error}` : ""}). The pool was NOT saved — check the worker in the Cloudflare dashboard (workers.dev subdomain may need a moment to activate).` },
+        { status: 502 }
       );
     }
 

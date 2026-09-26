@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
+import { probeRelayWithRetry } from "@/lib/network/relayProbe";
 
 const VERCEL_API = "https://api.vercel.com";
 
@@ -110,9 +111,11 @@ export async function POST(request) {
     const deployment = await deployRes.json();
     const deploymentId = deployment.id || deployment.uid;
 
-    // Disable deployment protection (Vercel Authentication)
+    // Disable deployment protection (Vercel Authentication). #1037: a failed
+    // PATCH used to be ignored, leaving a relay that answers every request
+    // with 403 "Access denied" and no diagnostics.
     const projectId = deployment.projectId || projectName;
-    await fetch(`${VERCEL_API}/v9/projects/${projectId}`, {
+    const patchRes = await fetch(`${VERCEL_API}/v9/projects/${projectId}`, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${vercelToken}`,
@@ -120,10 +123,27 @@ export async function POST(request) {
       },
       body: JSON.stringify({ ssoProtection: null }),
     });
+    if (!patchRes.ok) {
+      const err = await patchRes.json().catch(() => ({}));
+      return NextResponse.json(
+        { error: `Could not disable Vercel deployment protection (${patchRes.status}): ${err.error?.message || "requests through the relay would 403"}. Disable "Vercel Authentication" for this project in the Vercel dashboard and retry.` },
+        { status: 502 }
+      );
+    }
 
     // Poll until deployment is ready
     const ready = await pollDeployment(deploymentId, vercelToken);
     const deployUrl = `https://${ready.url}`;
+
+    // #1037: probe the relay before saving the pool — "deployment READY" does
+    // not prove the function is reachable and speaks the relay contract.
+    const probe = await probeRelayWithRetry(deployUrl);
+    if (!probe.healthy) {
+      return NextResponse.json(
+        { error: `Relay deployed but the health probe failed (status ${probe.status}${probe.error ? `, ${probe.error}` : ""}). The pool was NOT saved — check the deployment in the Vercel dashboard.` },
+        { status: 502 }
+      );
+    }
 
     // Create proxy pool entry with type vercel
     const proxyPool = await createProxyPool({

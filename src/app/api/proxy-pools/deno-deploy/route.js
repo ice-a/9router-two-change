@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
+import { probeRelayWithRetry } from "@/lib/network/relayProbe";
 
 const DENO_V2_API = "https://api.deno.com/v2";
 
@@ -157,6 +158,15 @@ export async function POST(request) {
     const orgSlug = orgDomain.split(".")[0];
     const deployUrl = `https://${projectName}.${orgSlug}.deno.net`;
     console.log("Deno deployUrl:", deployUrl);
+
+    // #1037: probe before saving — same contract check as the other relays.
+    const probe = await probeRelayWithRetry(deployUrl);
+    if (!probe.healthy) {
+      return NextResponse.json(
+        { error: `Relay deployed but the health probe failed (status ${probe.status}${probe.error ? `, ${probe.error}` : ""}). The pool was NOT saved — check the app in the Deno Deploy dashboard.` },
+        { status: 502 }
+      );
+    }
 
     const proxyPool = await createProxyPool({
       name: projectName,
