@@ -10,6 +10,9 @@
 - **NVIDIA NIM** (#2311/#2610): set `quirks.dropClientMetadata` on the NVIDIA registry so Anthropic's `client_metadata` never reaches NIM's validator
 - **Connect timeout** (#4248): surface upstream connect timeouts as 504 (gateway timeout) with model + elapsed in the error line, instead of a bare 502
 - **Model locks** (#4250): marking a connection active now clears only expired `modelLock_*` entries — far-future locks injected to disable a dead model survive re-auth/token refresh
+- **Gemini/Antigravity** (#4345): close a terminal model turn in `normalizeGeminiContents` — synthetic `functionResponse` parts for unresponded trailing tool calls, else a "Continue." user turn after prefill text — instead of forwarding a guaranteed 400 "Requests ending with a model turn are not supported"
+- **Vision** (#3590): `step-3.7` flash keeps vision (specific capability pattern beats the generic text-only `*step-*` one) so images are no longer stripped and swapped to a non-vision fallback
+- **Windows builds**: `better-sqlite3` bumped to v13 — its prebuilds install on Windows where v12 silently skipped, leaving the webpack build unable to resolve the optional dep
 
 ## Chores
 - Remove non-runtime artifacts for the personal fork: `gitbook/`, `i18n/`, `cli/`, `skills/`, `.github/`, `docs/images/`, `captain-definition` (restore via git history); drop CLI pack/publish scripts and CLI-sync tests
