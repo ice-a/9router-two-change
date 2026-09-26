@@ -432,7 +432,39 @@ export function cleanJSONSchemaForAntigravity(schema) {
   return cleaned;
 }
 
-// Merge adjacent same-role messages, strip empty parts, ensure initial user turn
+// Gemini requires contents to start AND end on a user turn, and every
+// functionCall to be answered by a functionResponse. Agentic clients
+// (OpenCode/Cline/Roo/Cursor) legally end on an assistant turn — prefill text,
+// or a tool call whose result never arrived. Forwarding those verbatim 400s
+// ("Requests ending with a model turn are not supported", #4345), so close the
+// transcript with a synthetic user turn: matching functionResponse parts for
+// pending calls, else a bare "Continue." prompt to continue from a prefill.
+function closeTerminalModelTurn(out) {
+  const last = out.at(-1);
+  if (!last || last.role !== "model") return out;
+
+  const responses = [];
+  for (const part of last.parts) {
+    const call = part?.functionCall;
+    if (!call) continue;
+    responses.push({
+      functionResponse: {
+        name: call.name || "tool",
+        response: { result: "Continue." },
+        ...(call.id ? { id: call.id } : {}),
+      },
+    });
+  }
+  out.push(
+    responses.length > 0
+      ? { role: "user", parts: responses }
+      : { role: "user", parts: [{ text: "Continue." }] }
+  );
+  return out;
+}
+
+// Merge adjacent same-role messages, strip empty parts, ensure initial user turn,
+// and close a terminal model turn (#4345).
 export function normalizeGeminiContents(contents) {
   const out = [];
   for (const c of contents || []) {
@@ -446,7 +478,7 @@ export function normalizeGeminiContents(contents) {
   if (out.length > 0 && out[0].role !== "user") {
     out.unshift({ role: "user", parts: [{ text: "..." }] });
   }
-  return out;
+  return closeTerminalModelTurn(out);
 }
 
 
