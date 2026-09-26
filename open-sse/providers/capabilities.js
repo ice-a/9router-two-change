@@ -158,14 +158,20 @@ const CODEX_GPT_56_DEFAULT_CAPS = { vision: true, reasoning: true, search: true,
  * Provider-specific capability overrides. Keyed by provider alias/id.
  */
 export const PROVIDER_CAPABILITIES = {
-  // NVIDIA NIM is OpenAI-compatible → rejects MiniMax/GLM native `thinking` field.
-  // Force openai reasoning_effort format for its reasoning models. #issue
+  // NVIDIA NIM is OpenAI-compatible → rejects MiniMax/GLM/DeepSeek native `thinking`
+  // objects and out-of-enum efforts (#1914/#3794). Force openai reasoning_effort
+  // format for its reasoning models; kimi-k3 keeps the kimi effort map (snap to
+  // low|high|max via thinkingLevels). Curated list refreshed 2026-09-26 (#3398).
   "nvidia": {
-    "minimaxai/minimax-m2.7": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 131072 },
-    "minimaxai/minimax-m3": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 512000, maxOutput: 131072 },
-    "z-ai/glm-5.2": { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 128000 },
-    "deepseek-ai/deepseek-v4-pro": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 65536 },
-    "deepseek-ai/deepseek-v4-flash": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 65536 },
+    "moonshotai/kimi-k3": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
+    "moonshotai/kimi-k2.6": { reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 262144, maxOutput: 131072 },
+    "z-ai/glm-5.3": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 128000 },
+    "z-ai/glm-5.3-flash": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 128000 },
+    "deepseek-ai/deepseek-v4.1-flash": { reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 },
+    "nvidia/nemotron-3-ultra-550b-a55b": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 65536 },
+    "nvidia/nemotron-3-super-120b-a12b": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 65536 },
+    "nvidia/nemotron-3.5-lightning-30b-a3b": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000, maxOutput: 65536 },
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 128000, maxOutput: 65536 },
   },
   // glm-5.3-flash on OpenCode Go is served by a backend that rejects the z.ai
   // `thinking` object (400: unknown field "thinking") and wants reasoning_effort.

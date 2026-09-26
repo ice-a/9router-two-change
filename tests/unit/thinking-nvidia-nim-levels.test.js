@@ -16,7 +16,7 @@ describe("nvidia thinking levels (#1914/#3794)", () => {
 
   it("omits reasoning_effort for an 'auto' thinking intent (NIM rejects literal auto)", () => {
     const body = { messages: [{ role: "user", content: "hi" }], thinking: { type: "enabled" } };
-    applyThinking("openai", "minimaxai/minimax-m3", body, "nvidia");
+    applyThinking("openai", "z-ai/glm-5.3", body, "nvidia");
     expect(body.reasoning_effort).toBeUndefined();
     expect(body.thinking).toBeUndefined();
   });
