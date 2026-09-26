@@ -1,25 +1,44 @@
 <div align="center">
   <img src="./images/9router.png?1" alt="9Router Dashboard" width="800"/>
   
-  # 9Router - FREE AI Router & Token Saver
-  
+  # 9Router — FREE AI Router & Token Saver (two-change fork)
+
   **Never stop coding. Save 20-40% tokens with RTK + auto-fallback to FREE & cheap AI models.**
-  
+
   **Connect All AI Code Tools (Claude Code, Cursor, Antigravity, Copilot, Codex, Gemini, OpenCode, Cline, OpenClaw...) to 40+ AI Providers & 100+ Models.**
-  
-  [![npm](https://img.shields.io/npm/v/9router.svg)](https://www.npmjs.com/package/9router)
-  [![Downloads](https://img.shields.io/npm/dm/9router.svg)](https://www.npmjs.com/package/9router)
-  [![Docker Pulls](https://img.shields.io/docker/pulls/decolua/9router.svg?logo=docker&label=Docker%20pulls)](https://hub.docker.com/r/decolua/9router)
-  [![GHCR](https://img.shields.io/badge/GHCR-decolua%2F9router-blue?logo=github)](https://github.com/decolua/9router/pkgs/container/9router)
-  [![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/decolua/9router/blob/main/LICENSE)
 
-<a href="https://trendshift.io/repositories/22628" target="_blank"><img src="https://trendshift.io/api/badge/repositories/22628" alt="decolua%2F9router | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+  [![License](https://img.shields.io/github/license/ice-a/9router-two-change)](https://github.com/ice-a/9router-two-change/blob/master/LICENSE)
+  ![Upstream](https://img.shields.io/badge/upstream-decolua%2F9router%20v0.5.86-blue)
+  ![Fork focus](https://img.shields.io/badge/focus-NVIDIA%20NIM%20%2B%20free%20relay-green)
 
-[🚀 Quick Start](#-quick-start) • [💡 Features](#-key-features) • [📖 Setup](#-setup-guide) • [🌐 Website](https://9router.com)
-
-[🇧🇷 Português (Brasil)](./i18n/README.pt-BR.md) • [🇻🇳 Tiếng Việt](./i18n/README.vi.md) • [🇨🇳 中文](./i18n/README.zh-CN.md) • [🇯🇵 日本語](./i18n/README.ja-JP.md) • [🇷🇺 Русский](./i18n/README.ru.md) • [🇹🇭 ไทย](./i18n/README.th.md) • [🇮🇷 فارسی](./i18n/README.fa_IR.md) • [🇮🇩 Indonesia](./i18n/README.id-ID.md) • [🇪🇸 Español](./i18n/README.es.md) • [🇫🇷 Français](./i18n/README.fr.md)
+[🚀 Quick Start](#-quick-start) • [💡 Features](#-key-features) • [📖 Setup](#-setup-guide) • [🔱 Fork Changes](#-about-this-fork-9router-two-change)
 
 </div>
+
+---
+
+## 🔱 About This Fork (`9router-two-change`)
+
+This is a secondary-development fork of [decolua/9router](https://github.com/decolua/9router) (baseline v0.5.86), tailored for **NVIDIA NIM (free API) + free Vercel/Cloudflare relay egress**. The upstream docs below still apply; this section covers the delta.
+
+**Removed (non-runtime):** `gitbook/` docs site, `i18n/` translated READMEs, `cli/` tray launcher, `.github/` CI, `captain-definition`, `docs/images`. Everything is recoverable from git history.
+
+**Changed vs upstream (v0.5.87):**
+
+| Area | Upstream behavior | This fork |
+|---|---|---|
+| **Default relay pool** 🆕 | Relay pools (Vercel/Cloudflare/Deno) exist, but must be bound to each connection manually | One pool can be flagged **Default Pool** in the dashboard — every connection without its own proxy rides it, so all provider traffic (NVIDIA included) egresses through one free relay. `__none__` stays a hard opt-out |
+| **Standalone relay workers** 🆕 | Relay deployed only via dashboard token flows | [`relay/`](./relay) ships deploy-anywhere Cloudflare Worker + Vercel Edge Function (same `x-relay-target`/`x-relay-path` contract), optional `ALLOWED_TARGETS` allowlist, CN deployment notes |
+| NVIDIA thinking / effort | Literal `reasoning_effort:"auto"` and out-of-enum values 400 on NIM; kimi-k3 accepts only low/high/max so client defaults fail every request (#1914/#3794) | `auto` intent omits the field (upstream default); unsupported levels snap to the model's declared enum (medium→high, xhigh→max) |
+| NVIDIA `client_metadata` | Anthropic field forwarded → NIM 400 `Unsupported parameter(s)` (#2311/#2610 residual) | `quirks.dropClientMetadata` on the NVIDIA registry |
+| Strict Proxy | Flag dropped before `proxyFetch` on `/v1/chat/completions` — failed proxies silently fall back to the machine's real IP (#4007/#4333) | Flag forwarded end-to-end; fallback warnings name the target URL |
+| Connect timeout | ~250s upstream hangs surface as bare 502 (#4248) | 504 gateway timeout incl. model id + elapsed |
+| Model locks | Any activation (re-auth, refresh) wipes far-future `modelLock_*` used to disable dead models (#4250) | Only expired locks are cleared |
+| Gemini / Antigravity | Transcripts ending on an assistant turn (prefill, pending tool call) 400 "Requests ending with a model turn are not supported" (#4345) | Terminal model turns closed with synthetic `functionResponse` / "Continue." user turn |
+| Step 3.7 vision | Images stripped, request swapped to a non-vision fallback (#3590) | Vision kept via a specific `*step-3.7*` capability pattern |
+| Windows builds | better-sqlite3 v12 prebuilds silently skip → `npm run build` fails resolving the optional dep | better-sqlite3 v13 (prebuild installs on Windows) |
+
+New regression tests: `tests/unit/thinking-nvidia-nim-levels.test.js`, `tests/unit/default-relay-pool.test.js`, `tests/unit/gemini-terminal-turn.test.js`, `tests/unit/relay-worker.test.js`.
 
 ---
 
@@ -245,7 +264,7 @@ Default URLs:
 
 </div>
 
-> 🎬 **Made a video about 9Router?** Submit a [Pull Request](https://github.com/decolua/9router/pulls) adding your video to this section — we'll merge it!
+> 🎬 **Made a video about 9Router?** Submit a [Pull Request](https://github.com/ice-a/9router-two-change/pulls) adding your video to this section — we'll merge it!
 
 ---
 
@@ -1231,8 +1250,8 @@ Model: cc/claude-opus-4-7
 
 ```bash
 # Clone and install
-git clone https://github.com/decolua/9router.git
-cd 9router
+git clone https://github.com/ice-a/9router-two-change.git
+cd 9router-two-change
 npm install
 npm run build
 
@@ -1260,33 +1279,29 @@ pm2 startup
 
 ### Docker
 
-Published images (multi-platform `linux/amd64` + `linux/arm64`):
+This fork publishes no image — build it from source (multi-platform `linux/amd64` + `linux/arm64` work):
 
-- Docker Hub: [`decolua/9router`](https://hub.docker.com/r/decolua/9router)
-- GHCR: [`ghcr.io/decolua/9router`](https://github.com/decolua/9router/pkgs/container/9router)
-
-**Quick start (use published image):**
+**Quick start:**
 
 ```bash
+git clone https://github.com/ice-a/9router-two-change.git
+cd 9router-two-change
+docker compose up -d          # builds the image and starts 9router (+ optional headroom sidecar)
+```
+
+or manually:
+
+```bash
+docker build -t 9router-two-change .
 docker run -d \
   --name 9router \
   -p 20128:20128 \
   -v "$HOME/.9router:/app/data" \
   -e DATA_DIR=/app/data \
-  decolua/9router:latest
+  9router-two-change:latest
 ```
 
 → Open http://localhost:20128
-
-**Build from source (dev):**
-
-```bash
-git clone https://github.com/decolua/9router.git
-cd 9router/app
-docker build -t 9router .
-docker run -d --name 9router -p 20128:20128 \
-  -v "$HOME/.9router:/app/data" -e DATA_DIR=/app/data 9router
-```
 
 **Container defaults:**
 
@@ -1299,7 +1314,7 @@ docker run -d --name 9router -p 20128:20128 \
 docker logs -f 9router
 docker restart 9router
 docker stop 9router && docker rm 9router
-docker pull decolua/9router:latest   # update to latest
+git pull && docker compose up -d --build   # update to latest
 ```
 
 **Data persistence:** `$HOME/.9router/db/data.sqlite` on host ↔ `/app/data/db/data.sqlite` in container.
@@ -1501,22 +1516,10 @@ Authorization: Bearer your-api-key
 ## 📧 Support
 
 - **Website**: [9router.com](https://9router.com)
-- **GitHub**: [github.com/decolua/9router](https://github.com/decolua/9router)
-- **Issues**: [github.com/decolua/9router/issues](https://github.com/decolua/9router/issues)
+- **GitHub**: [github.com/ice-a/9router-two-change](https://github.com/ice-a/9router-two-change)
+- **Issues**: [github.com/ice-a/9router-two-change/issues](https://github.com/ice-a/9router-two-change/issues)
 
 ---
-
-## 👥 Contributors
-
-Thanks to all contributors who helped make 9Router better!
-
-[![Contributors](https://contrib.rocks/image?repo=decolua/9router&max=150&columns=15&anon=1&v=20260309)](https://github.com/decolua/9router/graphs/contributors)
-
----
-
-## 📊 Star Chart
-
-[![Star Chart](https://starchart.cc/decolua/9router.svg?variant=adaptive)](https://starchart.cc/decolua/9router)
 
 ## 🔀 Forks
 

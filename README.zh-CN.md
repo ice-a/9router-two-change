@@ -2,22 +2,43 @@
 <div align="center">
   <img src="./images/9router.png?1" alt="9Router Dashboard" width="800"/>
   
-  # 9Router - 免费 AI 路由器与 Token 节省器
-  
+  # 9Router — 免费 AI 路由器与 Token 节省器（二开版）
+
   **编程永不停歇。使用 RTK + 自动切换到免费/低价 AI 模型，节省 20-40% 的 tokens。**
-  
+
   **将所有 AI 编程工具（Claude Code、Cursor、Antigravity、Copilot、Codex、Gemini、OpenCode、Cline、OpenClaw...）连接到 40+ AI 提供商和 100+ 模型。**
-  
-  [![npm](https://img.shields.io/npm/v/9router.svg)](https://www.npmjs.com/package/9router)
-  [![Downloads](https://img.shields.io/npm/dm/9router.svg)](https://www.npmjs.com/package/9router)
-  [![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/decolua/9router/blob/main/LICENSE)
 
-  <a href="https://trendshift.io/repositories/22628" target="_blank"><img src="https://trendshift.io/api/badge/repositories/22628" alt="decolua%2F9router | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-  
-  [🚀 快速开始](#-快速开始) • [💡 功能特点](#-主要功能) • [📖 设置指南](#-设置指南) • [🌐 网站](https://9router.com)
+  [![License](https://img.shields.io/github/license/ice-a/9router-two-change)](https://github.com/ice-a/9router-two-change/blob/master/LICENSE)
+  ![Upstream](https://img.shields.io/badge/上游-decolua%2F9router%20v0.5.86-blue)
+  ![Fork focus](https://img.shields.io/badge/方向-NVIDIA%20NIM%20%2B%20免费中转-green)
 
-  [🇻🇳 Tiếng Việt](./i18n/README.vi.md) • [🇨🇳 中文](./i18n/README.zh-CN.md) • [🇯🇵 日本語](./i18n/README.ja-JP.md)
+  [🚀 快速开始](#-快速开始) • [💡 功能特点](#-主要功能) • [📖 设置指南](#-设置指南) • [🔱 二开改动](#-关于本二开9router-two-change)
 </div>
+
+---
+
+## 🔱 关于本二开（`9router-two-change`）
+
+本仓库是 [decolua/9router](https://github.com/decolua/9router) 的二次开发分支（基线 v0.5.86），面向 **NVIDIA NIM（免费 API）+ Vercel/Cloudflare 免费中转出口** 的个人使用场景。下文的上游文档仍然适用，本节只讲差异。
+
+**已移除（非运行时内容）：** `gitbook/` 文档站、`i18n/` 多语言 README、`cli/` 托盘启动器、`.github/` CI、`captain-definition`、`docs/images`。全部可从 git 历史恢复。
+
+**与上游的差异（v0.5.87）：**
+
+| 领域 | 上游行为 | 本二开 |
+|---|---|---|
+| **默认中转池** 🆕 | 已有 Vercel/Cloudflare/Deno 中转池，但需要逐个连接手动绑定 | 代理池可设为**默认池**——所有未单独绑定代理的连接（含 NVIDIA）自动走它，一条免费中转覆盖全部流量；`__none__` 仍是显式退出 |
+| **独立中转 Worker** 🆕 | 中转只能通过面板填 Token 部署 | [`relay/`](./relay) 提供可独立部署的 Cloudflare Worker + Vercel Edge Function（同一套 `x-relay-target`/`x-relay-path` 协议），支持 `ALLOWED_TARGETS` 目标白名单，附大陆部署说明 |
+| NVIDIA thinking / effort | 字面量 `reasoning_effort:"auto"` 和枚举外的等级会被 NIM 400 拒绝；kimi-k3 只认 low/high/max，客户端默认值 `medium` 导致每个请求都失败（#1914/#3794） | `auto` 意图直接省略该字段（走上游默认）；不支持的等级就近映射到模型声明的枚举（medium→high、xhigh→max） |
+| NVIDIA `client_metadata` | Anthropic 的字段被透传 → NIM 400 `Unsupported parameter(s)`（#2311/#2610 残留） | NVIDIA registry 声明 `quirks.dropClientMetadata` |
+| Strict Proxy | 标志在 `/v1/chat/completions` 路径被丢弃——代理失败后静默回退真实 IP（#4007/#4333） | 标志端到端透传；回退日志带目标 URL |
+| 连接超时 | 上游挂起 ~250s 后报裸 502（#4248） | 报 504 网关超时，附模型名与耗时 |
+| 模型锁 | 任何激活操作（重新授权/刷新）都会清掉用于禁用坏模型的远期 `modelLock_*`（#4250） | 只清已过期的锁 |
+| Gemini / Antigravity | 以 assistant turn 结尾的对话（prefill、未应答的工具调用）触发 400 "Requests ending with a model turn are not supported"（#4345） | 自动补全：未应答的 functionCall 合成对应 functionResponse，纯文本 prefill 补 "Continue." 用户轮 |
+| Step 3.7 视觉 | 图像被剥离，请求被换到非视觉兜底模型（#3590） | 通过更精确的 `*step-3.7*` 能力模式保留视觉 |
+| Windows 构建 | better-sqlite3 v12 的 prebuild 静默跳过 → `npm run build` 解析失败 | 升级 better-sqlite3 v13（prebuild 可安装） |
+
+新增回归测试：`tests/unit/thinking-nvidia-nim-levels.test.js`、`tests/unit/default-relay-pool.test.js`、`tests/unit/gemini-terminal-turn.test.js`、`tests/unit/relay-worker.test.js`。
 
 ---
 
@@ -173,7 +194,7 @@ PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run 
 
 </div>
 
-> 🎬 **制作了关于 9Router 的视频？** 提交 [Pull Request](https://github.com/decolua/9router/pulls)，将你的视频添加到此部分 — 我们会合并它！
+> 🎬 **制作了关于 9Router 的视频？** 提交 [Pull Request](https://github.com/ice-a/9router-two-change/pulls)，将你的视频添加到此部分 — 我们会合并它！
 
 ---
 
@@ -1022,8 +1043,8 @@ Model：cc/claude-opus-4-7
 
 ```bash
 # 克隆并安装
-git clone https://github.com/decolua/9router.git
-cd 9router
+git clone https://github.com/ice-a/9router-two-change.git
+cd 9router-two-change
 npm install
 npm run build
 
@@ -1267,24 +1288,10 @@ Authorization: Bearer your-api-key
 ## 📧 支持
 
 - **网站**：[9router.com](https://9router.com)
-- **GitHub**：[github.com/decolua/9router](https://github.com/decolua/9router)
-- **问题**：[github.com/decolua/9router/issues](https://github.com/decolua/9router/issues)
+- **GitHub**：[github.com/ice-a/9router-two-change](https://github.com/ice-a/9router-two-change)
+- **问题**：[github.com/ice-a/9router-two-change/issues](https://github.com/ice-a/9router-two-change/issues)
 
 ---
-
-## 👥 贡献者
-
-感谢所有帮助改进 9Router 的贡献者！
-
-[![Contributors](https://contrib.rocks/image?repo=decolua/9router&max=150&columns=15&anon=1&v=20260309)](https://github.com/decolua/9router/graphs/contributors)
-
----
-
-## 📊 Star 图表
-
-[![Star Chart](https://starchart.cc/decolua/9router.svg?variant=adaptive)](https://starchart.cc/decolua/9router)
-
-
 
 ## 🔀 分支
 
