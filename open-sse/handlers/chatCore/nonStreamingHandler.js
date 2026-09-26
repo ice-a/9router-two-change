@@ -23,6 +23,30 @@ function parseToolArguments(value) {
   }
 }
 
+// Some upstreams answer HTTP 200 with an error payload instead of a real
+// status code — NVIDIA NIM returns `choices: null` when the worker pool is
+// exhausted (#2727), which used to flow through as a "successful" empty
+// completion and broke every client ("ChatCompletion(id=None, choices=None)").
+// Map the payload back to a proper HTTP error for the client.
+export function detectUpstreamErrorPayload(body) {
+  if (!body || typeof body !== "object") return null;
+  const looksOpenAI = body.object === "chat.completion" || body.choices === null || Array.isArray(body.choices);
+  if (!looksOpenAI) return null;
+  if (Array.isArray(body.choices) && body.choices.length > 0) return null;
+
+  const err = body.error;
+  const errObj = err && typeof err === "object" ? err : null;
+  const errText = typeof err === "string" ? err : errObj ? JSON.stringify(err) : null;
+  // `choices: null` with no error object is still not a usable completion.
+  if (!errText && body.choices !== null) return null;
+
+  const raw = errText || "upstream returned no choices";
+  const codeNum = Number(errObj?.code ?? errObj?.status);
+  let status = Number.isInteger(codeNum) && codeNum >= 400 && codeNum < 600 ? codeNum : HTTP_STATUS.BAD_GATEWAY;
+  if (/resource.?exhausted|rate.?limit|too many requests/i.test(raw)) status = HTTP_STATUS.RATE_LIMITED;
+  return { status, message: raw.slice(0, 500) };
+}
+
 function openAICompletionToClaudeMessage(responseBody) {
   if (!responseBody?.choices?.[0]) return responseBody;
   const choice = responseBody.choices[0];
@@ -310,6 +334,15 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
   // bare OpenAI body and usage tracking sees data.usage. No-op unless the
   // provider opts in via transport.quirks.clineEnvelope.
   responseBody = unwrapClineEnvelope(responseBody, provider);
+
+  // #2727: HTTP 200 with an error payload (e.g. NVIDIA `choices: null` on
+  // ResourceExhausted) must not masquerade as a successful completion.
+  const upstreamError = detectUpstreamErrorPayload(responseBody);
+  if (upstreamError) {
+    appendLog({ tokens: { prompt_tokens: 0, completion_tokens: 0 }, status: `FAILED ${upstreamError.status}` });
+    if (log?.errorLine) log.errorLine(reqTag, "✗", `ERROR ${upstreamError.status} · ${provider}/${model} · upstream 200-with-error\n    ${upstreamError.message}`);
+    return createErrorResult(upstreamError.status, `[${provider}/${model}] ${upstreamError.message}`);
+  }
 
   reqLogger.logProviderResponse(providerResponse.status, providerResponse.statusText, providerResponse.headers, responseBody);
   if (onRequestSuccess) {
