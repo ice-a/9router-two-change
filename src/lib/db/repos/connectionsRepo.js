@@ -25,8 +25,15 @@ function resetHealthStateOnActivation(existing, patch) {
     backoffLevel: 0,
   };
 
+  // #4250: only expired locks are cleared here. A far-future modelLock_* (manually
+  // injected to keep a dead model out of rotation) must survive activation —
+  // clearing it let the model come straight back after any token refresh or
+  // re-auth that marked the connection active.
+  const now = Date.now();
   for (const key of Object.keys(existing || {})) {
-    if (key.startsWith(MODEL_LOCK_PREFIX)) normalized[key] = null;
+    if (!key.startsWith(MODEL_LOCK_PREFIX)) continue;
+    const expiry = existing[key];
+    if (!expiry || new Date(expiry).getTime() <= now) normalized[key] = null;
   }
 
   return normalized;

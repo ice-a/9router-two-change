@@ -149,6 +149,29 @@ function normalizeOpenAILevel(level, supportedLevels) {
   return "xhigh";
 }
 
+// Canonical ordering used to snap an unsupported level onto the nearest
+// supported one (ties snap up: medium → high, matching the deepseek/zai maps).
+const OPENAI_LEVEL_ORDER = ["minimal", "low", "medium", "high", "xhigh", "max"];
+
+// Snap a level onto the model's supported set. Strict OpenAI-compatible
+// upstreams 400 on out-of-enum efforts instead of clamping — NVIDIA NIM's
+// kimi-k3 only accepts low|high|max (#3794), so a client default of "medium"
+// would otherwise fail every request.
+function snapToSupported(level, supportedLevels) {
+  if (!level || !Array.isArray(supportedLevels) || supportedLevels.length === 0) return level;
+  if (supportedLevels.includes(level)) return level;
+  const idx = OPENAI_LEVEL_ORDER.indexOf(level);
+  if (idx === -1) return level;
+  let best = null, bestDist = Infinity;
+  for (const cand of supportedLevels) {
+    const cIdx = OPENAI_LEVEL_ORDER.indexOf(cand);
+    if (cIdx === -1) continue;
+    const dist = Math.abs(cIdx - idx);
+    if (dist < bestDist || (dist === bestDist && cIdx > idx)) { best = cand; bestDist = dist; }
+  }
+  return best ?? level;
+}
+
 function toGeminiThinkingLevel(cfg) {
   const raw = cfg.mode === "auto" ? "high" : (toLevel(cfg) || "high");
   return effortToThinkingLevel(raw);
@@ -242,7 +265,15 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display) {
     case "openai": {
       if (none && canDisable) { body.reasoning_effort = "none"; break; }
       const level = toLevel(eff);
-      if (level) body.reasoning_effort = normalizeOpenAILevel(level, supportedLevels);
+      if (!level) break;
+      // "auto" intent → omit the field so the upstream default applies. Literal
+      // "auto" 400s on strict OpenAI-compatible upstreams (NVIDIA NIM #1914);
+      // send it only when the model's supported set explicitly declares it.
+      if (level === "auto") {
+        if (supportedLevels?.includes("auto")) body.reasoning_effort = "auto";
+        break;
+      }
+      body.reasoning_effort = normalizeOpenAILevel(snapToSupported(level, supportedLevels), supportedLevels);
       break;
     }
     case "claude-adaptive": {
@@ -309,7 +340,7 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display) {
     }
     case "kimi": {
       if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
-      const effort = toKimiReasoningEffort(eff);
+      const effort = snapToSupported(toKimiReasoningEffort(eff), supportedLevels);
       if (effort) body.reasoning_effort = effort;
       break;
     }

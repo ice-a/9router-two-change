@@ -20,6 +20,9 @@ export default {
   transport: {
     baseUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
     validateUrl: "https://integrate.api.nvidia.com/v1/models",
+    // #2311/#2610: NVIDIA rejects Anthropic's client_metadata with
+    // "Validation: Unsupported parameter(s): `client_metadata`".
+    quirks: { dropClientMetadata: true },
   },
   models: [
     { id: "minimaxai/minimax-m2.7", name: "MiniMax M2.7" },
