@@ -1,3 +1,19 @@
+# v0.5.87 (2026-09-26)
+
+## Features
+- **Proxy Pools**: add an exclusive "default pool" flag — connections without their own proxy pool fall back to it, so every provider (including NVIDIA NIM) can egress through one free Cloudflare/Vercel relay without per-connection setup; deactivating a pool drops its default flag, and `__none__` remains a hard opt-out
+- **Relay**: add standalone free egress relay workers (`relay/`) — Cloudflare Worker + Vercel Edge Function, same `x-relay-target`/`x-relay-path` contract as the built-in relay pools, with optional `ALLOWED_TARGETS` origin allowlist and CN deployment notes
+
+## Fixes
+- **Strict Proxy** (#4007/#4333): forward the pool's `strictProxy` flag through `getProviderCredentials` and chatCore `proxyOptions` — it was dropped field-by-field on the `/v1/chat/completions` path, so failed proxies silently fell back to the machine's real IP; fallback warnings now name the target URL for log correlation
+- **NVIDIA NIM** (#1914/#3794): omit `reasoning_effort` for an "auto" thinking intent instead of sending the literal `auto` NIM rejects, and snap unsupported efforts onto each model's supported enum — kimi-k3's upstream 400 names low|high|max, so medium→high, xhigh→max; declare the enum in thinking levels
+- **NVIDIA NIM** (#2311/#2610): set `quirks.dropClientMetadata` on the NVIDIA registry so Anthropic's `client_metadata` never reaches NIM's validator
+- **Connect timeout** (#4248): surface upstream connect timeouts as 504 (gateway timeout) with model + elapsed in the error line, instead of a bare 502
+- **Model locks** (#4250): marking a connection active now clears only expired `modelLock_*` entries — far-future locks injected to disable a dead model survive re-auth/token refresh
+
+## Chores
+- Remove non-runtime artifacts for the personal fork: `gitbook/`, `i18n/`, `cli/`, `skills/`, `.github/`, `docs/images/`, `captain-definition` (restore via git history); drop CLI pack/publish scripts and CLI-sync tests
+
 # v0.5.86 (2026-09-23)
 
 ## Features
