@@ -1,4 +1,4 @@
-import { getProxyPoolById } from "@/models";
+import { getProxyPoolById, getProxyPools } from "@/models";
 
 // Safely normalize any value into a trimmed string.
 function normalizeString(value) {
@@ -56,10 +56,32 @@ function normalizeLegacyProxy(providerSpecificData = {}) {
 }
 
 /**
+ * Resolve the pool a connection should use.
+ *
+ * Priority:
+ * 1. Explicit pool on the connection (proxyPoolId; "__none__" = opted out)
+ * 2. Default pool (isDefault) — the catch-all free-relay route so every
+ *    provider can egress through one shared relay without per-connection setup
+ * 3. Legacy per-connection proxy
+ * 4. Direct
+ */
+async function pickPool(providerSpecificData) {
+  const explicitRaw = normalizeString(providerSpecificData?.proxyPoolId);
+  // "__none__" is a hard opt-out: the user explicitly disabled proxying for this
+  // connection, so it must not fall through to the default pool.
+  if (explicitRaw === "__none__") return "";
+  if (explicitRaw) return explicitRaw;
+
+  const pools = await getProxyPools({ isActive: true });
+  const fallback = pools.find((p) => p.isDefault === true && p.proxyUrl);
+  return fallback?.id || "";
+}
+
+/**
  * Resolve final proxy configuration.
  *
  * Priority:
- * 1. Proxy Pool
+ * 1. Proxy Pool (explicit or default)
  * 2. Legacy Proxy
  * 3. No Proxy
  */
@@ -67,13 +89,7 @@ export async function resolveConnectionProxyConfig(
   providerSpecificData = {}
 ) {
   try {
-    const proxyPoolIdRaw = normalizeString(
-      providerSpecificData?.proxyPoolId
-    );
-
-    // "__none__" means explicitly disabled
-    const proxyPoolId =
-      proxyPoolIdRaw === "__none__" ? "" : proxyPoolIdRaw;
+    const proxyPoolId = await pickPool(providerSpecificData);
 
     const legacy = normalizeLegacyProxy(providerSpecificData);
 

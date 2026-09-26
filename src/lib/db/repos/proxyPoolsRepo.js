@@ -67,14 +67,34 @@ export async function createProxyPool(data) {
     type: data.type || "http",
     isActive: data.isActive !== undefined ? data.isActive : true,
     strictProxy: data.strictProxy === true,
+    isDefault: data.isDefault === true && data.isActive !== false,
     testStatus: data.testStatus || "unknown",
     lastTestedAt: data.lastTestedAt || null,
     lastError: data.lastError || null,
     createdAt: now,
     updatedAt: now,
   };
-  upsert(db, pool);
+  db.transaction(() => {
+    upsert(db, pool);
+    // "Default pool" is exclusive: at most one pool carries the flag. The default
+    // pool is the catch-all route for connections without their own proxyPoolId,
+    // so ambiguity here would be a silent routing bug.
+    if (pool.isDefault) {
+      clearOtherDefaults(db, pool.id);
+    }
+  });
   return pool;
+}
+
+function clearOtherDefaults(db, exceptId) {
+  const rows = db.all(`SELECT * FROM proxyPools`);
+  for (const row of rows) {
+    if (row.id === exceptId) continue;
+    const pool = rowToPool(row);
+    if (pool.isDefault !== true) continue;
+    const updated = { ...pool, isDefault: false, updatedAt: new Date().toISOString() };
+    upsert(db, updated);
+  }
 }
 
 export async function updateProxyPool(id, data) {
@@ -84,7 +104,12 @@ export async function updateProxyPool(id, data) {
     const row = db.get(`SELECT * FROM proxyPools WHERE id = ?`, [id]);
     if (!row) return;
     const merged = { ...rowToPool(row), ...data, updatedAt: new Date().toISOString() };
+    // An inactive default would dead-route every unassigned connection — drop the flag.
+    if (merged.isActive === false) merged.isDefault = false;
     upsert(db, merged);
+    if (merged.isDefault === true) {
+      clearOtherDefaults(db, id);
+    }
     result = merged;
   });
   return result;

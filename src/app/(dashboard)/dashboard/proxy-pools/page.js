@@ -24,6 +24,7 @@ function normalizeFormData(data = {}) {
     noProxy: data.noProxy || "",
     isActive: data.isActive !== false,
     strictProxy: data.strictProxy === true,
+    isDefault: data.isDefault === true,
   };
 }
 
@@ -112,6 +113,7 @@ export default function ProxyPoolsPage() {
       noProxy: formData.noProxy.trim(),
       isActive: formData.isActive === true,
       strictProxy: formData.strictProxy === true,
+      isDefault: formData.isDefault === true,
     };
 
     if (!payload.name || !payload.proxyUrl) return;
@@ -716,6 +718,9 @@ export default function ProxyPoolsPage() {
                     <Badge variant={pool.isActive ? "success" : "default"} size="sm">
                       {pool.isActive ? "active" : "inactive"}
                     </Badge>
+                    {pool.isDefault && (
+                      <Badge variant="info" size="sm">default</Badge>
+                    )}
                     {pool.type === "vercel" && (
                       <Badge variant="default" size="sm">vercel relay</Badge>
                     )}
@@ -1030,6 +1035,18 @@ export default function ProxyPoolsPage() {
             <Toggle
               checked={formData.strictProxy === true}
               onChange={() => setFormData((prev) => ({ ...prev, strictProxy: !prev.strictProxy }))}
+              disabled={saving}
+            />
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-lg border border-border/50 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-medium text-sm">Default Pool</p>
+              <p className="text-xs text-text-muted">Route every connection without its own pool through this one (e.g. a free relay).</p>
+            </div>
+            <Toggle
+              checked={formData.isDefault === true}
+              onChange={() => setFormData((prev) => ({ ...prev, isDefault: !prev.isDefault }))}
               disabled={saving}
             />
           </div>
