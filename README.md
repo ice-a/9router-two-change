@@ -17,6 +17,8 @@
 |---|---|---|
 | **默认中转池** 🆕 | 中转池（Vercel/Cloudflare/Deno）需逐个连接手动绑定 | 代理池可设为**默认池**：所有未单独绑定代理的连接（含 NVIDIA）自动走它，一条免费中转覆盖全部流量；`__none__` 显式退出 |
 | **独立中转 Worker** 🆕 | 中转只能通过面板填 Token 部署 | [`relay/`](./relay) 提供可独立部署的 Cloudflare Worker + Vercel Edge Function（同一套协议），支持 `ALLOWED_TARGETS` 白名单 |
+| **动态模型列表** 🆕 | NVIDIA 模型表静态写死，NIM 上下线后静默过期（#3398） | 从官方 `/v1/models` 拉实时列表作为候选，且可直接输入任意在售模型 id |
+| **中转部署体检** 🆕 | 部署后不校验，Vercel 保护未关闭时保存一个必 403 的池（#1037） | 部署后立即探测 relay 契约，失败不保存并给出诊断 |
 | NVIDIA thinking | `reasoning_effort:"auto"` 和枚举外等级被 NIM 400 拒绝；kimi-k3 只认 low/high/max，客户端默认值 `medium` 导致每个请求失败（#1914/#3794） | `auto` 省略字段走默认；不支持的等级就近映射（medium→high、xhigh→max） |
 | NVIDIA client_metadata | Anthropic 字段透传 → NIM 400（#2311/#2610 残留） | registry 声明 `dropClientMetadata` |
 | Strict Proxy | 标志在 `/v1/chat/completions` 丢失，代理挂掉后静默走真实 IP（#4007/#4333） | 端到端透传；回退日志带目标 URL |
@@ -24,6 +26,7 @@
 | 模型锁 | 重新授权/刷新会清掉禁用坏模型的远期 `modelLock_*`（#4250） | 只清已过期的锁 |
 | Gemini / Antigravity | 以 assistant turn 结尾的对话必现 400（#4345） | 自动补全 functionResponse / "Continue." 用户轮 |
 | Step 3.7 视觉 | 图像被剥离并换到非视觉兜底模型（#3590） | 保留视觉 |
+| 上游 200 带错误体 | NVIDIA ResourceExhausted 时返回 HTTP 200 + `choices:null`，客户端收到"成功的空响应"（#2727） | 映射回 429/502 正确错误 |
 | Windows 构建 | better-sqlite3 v12 prebuild 静默跳过，`npm run build` 失败 | 升级 v13，开箱可构建 |
 
 **已移除（非运行时）**：`gitbook/` 文档站、多语言 README、`cli/` 托盘启动器、`.github/` CI、`captain-definition`——均可从 git 历史恢复。完整上游文档见 [官方 README](https://github.com/decolua/9router#readme)。

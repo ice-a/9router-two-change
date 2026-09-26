@@ -3,6 +3,8 @@
 ## Features
 - **Proxy Pools**: add an exclusive "default pool" flag — connections without their own proxy pool fall back to it, so every provider (including NVIDIA NIM) can egress through one free Cloudflare/Vercel relay without per-connection setup; deactivating a pool drops its default flag, and `__none__` remains a hard opt-out
 - **Relay**: add standalone free egress relay workers (`relay/`) — Cloudflare Worker + Vercel Edge Function, same `x-relay-target`/`x-relay-path` contract as the built-in relay pools, with optional `ALLOWED_TARGETS` origin allowlist and CN deployment notes
+- **NVIDIA NIM** (#3398): pull the live `/v1/models` catalog for the dashboard model picker (`modelsFetcher` + `passthroughModels`), refresh the curated defaults to what is actually live (kimi-k3, glm-5.3/5.3-flash, deepseek-v4.1-flash, nemotron-3.5 lightning…), and drop models retired from NIM
+- **Relay deploys** (#1037): probe the relay contract right after Vercel/Cloudflare/Deno deployment and before saving the pool; a failed Vercel deployment-protection PATCH now aborts with a clear message instead of saving a relay that answers 403
 
 ## Fixes
 - **Strict Proxy** (#4007/#4333): forward the pool's `strictProxy` flag through `getProviderCredentials` and chatCore `proxyOptions` — it was dropped field-by-field on the `/v1/chat/completions` path, so failed proxies silently fell back to the machine's real IP; fallback warnings now name the target URL for log correlation
@@ -10,6 +12,7 @@
 - **NVIDIA NIM** (#2311/#2610): set `quirks.dropClientMetadata` on the NVIDIA registry so Anthropic's `client_metadata` never reaches NIM's validator
 - **Connect timeout** (#4248): surface upstream connect timeouts as 504 (gateway timeout) with model + elapsed in the error line, instead of a bare 502
 - **Model locks** (#4250): marking a connection active now clears only expired `modelLock_*` entries — far-future locks injected to disable a dead model survive re-auth/token refresh
+- **Upstream 200-with-error** (#2727): a non-streaming HTTP 200 body carrying an error payload (NVIDIA `choices: null` on ResourceExhausted) now maps to 429/502 with the upstream message instead of flowing through as a "successful" empty completion
 - **Gemini/Antigravity** (#4345): close a terminal model turn in `normalizeGeminiContents` — synthetic `functionResponse` parts for unresponded trailing tool calls, else a "Continue." user turn after prefill text — instead of forwarding a guaranteed 400 "Requests ending with a model turn are not supported"
 - **Vision** (#3590): `step-3.7` flash keeps vision (specific capability pattern beats the generic text-only `*step-*` one) so images are no longer stripped and swapped to a non-vision fallback
 - **Windows builds**: `better-sqlite3` bumped to v13 — its prebuilds install on Windows where v12 silently skipped, leaving the webpack build unable to resolve the optional dep
