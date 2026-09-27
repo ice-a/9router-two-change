@@ -182,7 +182,11 @@ export default function ProxyPoolsPage() {
       }
 
       await fetchProxyPools();
-      notify.success(data.ok ? "Proxy test passed" : "Proxy test failed");
+      if (data.ok) {
+        notify.success(data.exitIp ? `Relay test passed · exit ${data.exitIp}` : "Proxy test passed");
+      } else {
+        notify.error(`${data.error || "Proxy test failed"}${data.stage ? ` (${data.stage})` : ""}`);
+      }
     } catch (error) {
       console.log("Error testing proxy pool:", error);
       notify.error("Failed to test proxy");

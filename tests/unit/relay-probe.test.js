@@ -3,7 +3,7 @@
 // with 400 and "Missing x-relay-target" in the body.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import http from "node:http";
-import { buildRelayProbeResult, probeRelayWithRetry } from "../../src/lib/network/relayProbe.js";
+import { buildRelayProbeResult, probeRelayWithRetry, testRelayEgress } from "../../src/lib/network/relayProbe.js";
 
 let healthyRelay;
 let brokenRelay;
@@ -61,4 +61,60 @@ describe("relay probe (#1037)", () => {
     const result = await probeRelayWithRetry("http://127.0.0.1:9", { attempts: 1, delayMs: 1 });
     expect(result.healthy).toBe(false);
   }, 15000);
+});
+
+describe("testRelayEgress — two-stage pool test (#1037)", () => {
+  it("passes a healthy relay and reports the exit IP", async () => {
+    // Mimics a working relay: bare GET → contract 400; forwarded GET → trace body.
+    const relay = http.createServer((req, res) => {
+      if (!req.headers["x-relay-target"]) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "Missing x-relay-target header" }));
+        return;
+      }
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end("fl=abc\nip=203.0.113.7\nts=1\n");
+    });
+    await new Promise((r) => relay.listen(0, "127.0.0.1", r));
+    try {
+      const result = await testRelayEgress(`http://127.0.0.1:${relay.address().port}`, {
+        fetchFn: (url, init) => fetch(url, init),
+      });
+      expect(result.ok).toBe(true);
+      expect(result.exitIp).toBe("203.0.113.7");
+      expect(result.elapsedMs).toBeGreaterThanOrEqual(0);
+    } finally {
+      relay.close();
+    }
+  });
+
+  it("fails at the probe stage when the URL is not a relay", async () => {
+    const result = await testRelayEgress(brokenUrl, { fetchFn: (url, init) => fetch(url, init) });
+    expect(result.ok).toBe(false);
+    expect(result.stage).toBe("probe");
+  });
+
+  it("fails at the egress stage when forwarding breaks", async () => {
+    // Contract-compliant but forwarding broken (502 on every forwarded call).
+    const relay = http.createServer((req, res) => {
+      if (!req.headers["x-relay-target"]) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "Missing x-relay-target header" }));
+        return;
+      }
+      res.writeHead(502);
+      res.end("upstream down");
+    });
+    await new Promise((r) => relay.listen(0, "127.0.0.1", r));
+    try {
+      const result = await testRelayEgress(`http://127.0.0.1:${relay.address().port}`, {
+        fetchFn: (url, init) => fetch(url, init),
+      });
+      expect(result.ok).toBe(false);
+      expect(result.stage).toBe("egress");
+      expect(result.status).toBe(502);
+    } finally {
+      relay.close();
+    }
+  });
 });
