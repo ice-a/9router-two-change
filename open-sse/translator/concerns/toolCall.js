@@ -23,9 +23,55 @@ function sanitizeToolId(id) {
   return sanitized.length > 0 ? sanitized : null;
 }
 
+/**
+ * Pair Responses-style tool calls with their *_output items (#4091).
+ * Clients (Codex sessions in particular) sometimes emit a `function_call_output`
+ * without `call_id`; forwarding that as a tool message without `tool_call_id`
+ * makes every strict upstream 400 the whole request. The pairer keeps the
+ * queue of call ids awaiting an output (oldest first) so a missing id can be
+ * filled by order, and hands out deterministic ids for calls that lost theirs.
+ */
+export function createToolCallPairer() {
+  const pendingIds = [];
+  const knownIds = new Set();
+  let autoCounter = 0;
+
+  return {
+    // Register a function_call / custom_tool_call; returns the id to put on the wire.
+    registerCall(rawId) {
+      let id = rawId;
+      if (!id || typeof id !== "string" || id.trim() === "") {
+        do {
+          autoCounter += 1;
+          id = `call_auto_${autoCounter}`;
+        } while (knownIds.has(id));
+      }
+      knownIds.add(id);
+      pendingIds.push(id);
+      return id;
+    },
+
+    // Resolve a *_output to its tool_call_id. Returns null when the output is
+    // a stray (no id and no pending call) — callers should drop it.
+    resolveOutput(rawId) {
+      if (rawId && typeof rawId === "string") {
+        const idx = pendingIds.indexOf(rawId);
+        if (idx !== -1) pendingIds.splice(idx, 1);
+        return rawId;
+      }
+      return pendingIds.shift() || null;
+    },
+  };
+}
+
 // Ensure all tool_calls have valid id field and arguments is string (some providers require it)
 export function ensureToolCallIds(body) {
   if (!body.messages || !Array.isArray(body.messages)) return body;
+
+  // #4091: tool messages missing tool_call_id entirely (not just invalid) must
+  // be repaired too — JSON.stringify drops the key and strict upstreams 400.
+  // Pair with the most recent unanswered assistant tool_call when possible.
+  const pendingCallIds = [];
 
   for (let i = 0; i < body.messages.length; i++) {
     const msg = body.messages[i];
@@ -44,13 +90,23 @@ export function ensureToolCallIds(body) {
         if (tc.function?.arguments && typeof tc.function.arguments !== "string") {
           tc.function.arguments = JSON.stringify(tc.function.arguments);
         }
+        pendingCallIds.push(tc.id);
       }
     }
 
     // Validate tool_call_id in tool messages (role: "tool")
-    if (msg.role === "tool" && msg.tool_call_id && !TOOL_ID_PATTERN.test(msg.tool_call_id)) {
-      const sanitized = sanitizeToolId(msg.tool_call_id);
-      msg.tool_call_id = sanitized || generateToolCallId(i, 0);
+    if (msg.role === "tool") {
+      if (msg.tool_call_id && !TOOL_ID_PATTERN.test(msg.tool_call_id)) {
+        const sanitized = sanitizeToolId(msg.tool_call_id);
+        msg.tool_call_id = sanitized || generateToolCallId(i, 0);
+      }
+      if (!msg.tool_call_id) {
+        const idx = pendingCallIds.length - 1;
+        msg.tool_call_id = idx >= 0 ? pendingCallIds.splice(idx, 1)[0] : generateToolCallId(i, 0);
+      } else {
+        const idx = pendingCallIds.indexOf(msg.tool_call_id);
+        if (idx !== -1) pendingCallIds.splice(idx, 1);
+      }
     }
 
     // Also validate tool_use blocks in content (Claude format)

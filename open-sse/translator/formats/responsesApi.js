@@ -1,4 +1,5 @@
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
+import { createToolCallPairer } from "../concerns/toolCall.js";
 
 /**
  * Normalize Responses API input to array format.
@@ -96,6 +97,9 @@ export function convertResponsesApiFormat(body) {
   let currentAssistantMsg = null;
   let pendingToolCalls = [];
   let pendingToolResults = [];
+  // #4091: pair *_output items with their pending calls so a missing call_id
+  // never reaches upstream as a tool message without tool_call_id.
+  const pairer = createToolCallPairer();
 
   const inputItems = normalizeResponsesInput(body.input);
   if (!inputItems) return body;
@@ -131,10 +135,23 @@ export function convertResponsesApiFormat(body) {
           return c;
         })
         : item.content;
+      // #4091: chat-style tool result reaching the Responses endpoint — pair it
+      // with its call when it names one; salvage it as a user note when it
+      // doesn't (strict upstreams reject a tool message without tool_call_id).
+      if (item.role === ROLE.TOOL) {
+        const resolved = pairer.resolveOutput(item.call_id ?? item.tool_call_id);
+        if (resolved) {
+          result.messages.push({ role: ROLE.TOOL, tool_call_id: resolved, content });
+        } else {
+          const text = typeof content === "string" ? content : JSON.stringify(content);
+          result.messages.push({ role: ROLE.USER, content: [{ type: OPENAI_BLOCK.TEXT, text: `[Tool result] ${text}` }] });
+        }
+        continue;
+      }
       result.messages.push({ role: item.role, content });
     }
     else if (itemType === RESPONSES_ITEM.FUNCTION_CALL) {
-      // Start or append to assistant message with tool_calls
+      // Start or append to assistant message with tool calls
       if (!currentAssistantMsg) {
         currentAssistantMsg = {
           role: ROLE.ASSISTANT,
@@ -145,7 +162,9 @@ export function convertResponsesApiFormat(body) {
       // Skip items with empty/missing name — upstream APIs reject nameless tool calls (#444)
       if (!item.name || typeof item.name !== "string" || item.name.trim() === "") continue;
       currentAssistantMsg.tool_calls.push({
-        id: item.call_id,
+        // #4091: a call that lost its call_id gets a deterministic id so the
+        // later output still pairs with it.
+        id: pairer.registerCall(item.call_id),
         type: OPENAI_BLOCK.FUNCTION,
         function: {
           name: item.name,
@@ -159,10 +178,15 @@ export function convertResponsesApiFormat(body) {
         result.messages.push(currentAssistantMsg);
         currentAssistantMsg = null;
       }
+      // #4091: pair the output with its pending call — a missing call_id uses
+      // the oldest unanswered one; a stray output (no call at all) is dropped
+      // instead of 400ing the whole request on every strict upstream.
+      const resolvedCallId = pairer.resolveOutput(item.call_id);
+      if (!resolvedCallId) continue;
       // Add tool result
       pendingToolResults.push({
         role: ROLE.TOOL,
-        tool_call_id: item.call_id,
+        tool_call_id: resolvedCallId,
         content: typeof item.output === "string" ? item.output : JSON.stringify(item.output)
       });
     }

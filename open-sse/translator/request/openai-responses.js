@@ -13,6 +13,7 @@ import {
   coerceResponsesOutput,
 } from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
+import { createToolCallPairer } from "../concerns/toolCall.js";
 
 const MAX_TOOL_NAME_LEN = 128;
 
@@ -37,6 +38,9 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   let pendingReasoningEncrypted = "";
   const additionalTools = [];
   const customToolNames = new Set();
+  // #4091: pair *_output items with their pending calls so a missing call_id
+  // never reaches upstream as a tool message without tool_call_id.
+  const pairer = createToolCallPairer();
 
   const inputItems = normalizeResponsesInput(body.input);
   if (!inputItems) return body;
@@ -95,6 +99,21 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       const msg = { role: item.role, content };
       // Attach buffered reasoning to assistant turn (required by xiaomi-mimo + store=false continuity)
       if (item.role === ROLE.ASSISTANT) attachPendingReasoning(msg);
+      else if (item.role === ROLE.TOOL) {
+        // #4091: chat-style tool result reaching the Responses endpoint — pair
+        // it with its call when it names one; salvage it as a user note when it
+        // doesn't (strict upstreams reject a tool message without tool_call_id).
+        pendingReasoning = "";
+        pendingReasoningEncrypted = "";
+        const resolved = pairer.resolveOutput(item.call_id ?? item.tool_call_id);
+        if (resolved) {
+          result.messages.push({ role: ROLE.TOOL, tool_call_id: resolved, content });
+        } else {
+          const text = typeof content === "string" ? content : JSON.stringify(content);
+          result.messages.push({ role: ROLE.USER, content: [{ type: OPENAI_BLOCK.TEXT, text: `[Tool result] ${text}` }] });
+        }
+        continue;
+      }
       else {
         pendingReasoning = "";
         pendingReasoningEncrypted = "";
@@ -118,7 +137,9 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         ? { input: typeof item.input === "string" ? item.input : JSON.stringify(item.input ?? "") }
         : item.arguments;
       currentAssistantMsg.tool_calls.push({
-        id: item.call_id,
+        // #4091: a call that lost its call_id gets a deterministic id so the
+        // later output still pairs with it.
+        id: pairer.registerCall(item.call_id),
         type: OPENAI_BLOCK.FUNCTION,
         function: {
           name: item.name,
@@ -139,10 +160,15 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         }
         pendingToolResults = [];
       }
+      // #4091: pair the output with its pending call — a missing call_id uses
+      // the oldest unanswered one; a stray output (no call at all) is dropped
+      // instead of 400ing the whole request on every strict upstream.
+      const resolvedCallId = pairer.resolveOutput(item.call_id);
+      if (!resolvedCallId) continue;
       // Add tool result immediately
       result.messages.push({
         role: ROLE.TOOL,
-        tool_call_id: item.call_id,
+        tool_call_id: resolvedCallId,
         content: typeof item.output === "string" ? item.output : JSON.stringify(item.output)
       });
     }
