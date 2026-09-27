@@ -17,8 +17,9 @@
 |---|---|---|
 | **默认中转池** 🆕 | 中转池（Vercel/Cloudflare/Deno）需逐个连接手动绑定 | 代理池可设为**默认池**：所有未单独绑定代理的连接（含 NVIDIA）自动走它，一条免费中转覆盖全部流量；`__none__` 显式退出 |
 | **独立中转 Worker** 🆕 | 中转只能通过面板填 Token 部署 | [`relay/`](./relay) 提供可独立部署的 Cloudflare Worker + Vercel Edge Function（同一套协议），支持 `ALLOWED_TARGETS` 白名单 |
-| **动态模型列表** 🆕 | NVIDIA 模型表静态写死，NIM 上下线后静默过期（#3398） | 从官方 `/v1/models` 拉实时列表作为候选，且可直接输入任意在售模型 id |
+| **动态模型列表** 🆕 | NVIDIA 模型表静态写死，NIM 上下线后静默过期（#3398） | 面板与 `/v1/models` 都拉官方实时目录（带缓存、走中转出口），可直接输入任意在售模型 id |
 | **中转部署体检** 🆕 | 部署后不校验，Vercel 保护未关闭时保存一个必 403 的池（#1037） | 部署后立即探测 relay 契约，失败不保存并给出诊断 |
+| **中转池测试** 🆕 | 依赖 httpbin.org 往返，抖动时把健康池误判停用 | 两阶段测试（契约 + 真实出口往返），报告中转出口 IP |
 | NVIDIA thinking | `reasoning_effort:"auto"` 和枚举外等级被 NIM 400 拒绝；kimi-k3 只认 low/high/max，客户端默认值 `medium` 导致每个请求失败（#1914/#3794） | `auto` 省略字段走默认；不支持的等级就近映射（medium→high、xhigh→max） |
 | NVIDIA client_metadata | Anthropic 字段透传 → NIM 400（#2311/#2610 残留） | registry 声明 `dropClientMetadata` |
 | Strict Proxy | 标志在 `/v1/chat/completions` 丢失，代理挂掉后静默走真实 IP（#4007/#4333） | 端到端透传；回退日志带目标 URL |
