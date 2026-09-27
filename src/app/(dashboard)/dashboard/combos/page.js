@@ -54,6 +54,11 @@ const STRATEGY_OPTIONS = [
 
 export default function CombosPage() {
   const [combos, setCombos] = useState([]);
+  // #4322: drag-to-reorder the combo list; order persists via /api/combos/reorder.
+  const comboSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingCombo, setEditingCombo] = useState(null);
@@ -62,6 +67,27 @@ export default function CombosPage() {
   const [capacityAdapter, setCapacityAdapter] = useState(EMPTY_CAPACITY_ADAPTER);
   const { getCaps } = useModelCaps();
   const [confirmState, setConfirmState] = useState(null);
+
+  const handleComboDragEnd = async (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = combos.findIndex((c) => c.id === active.id);
+    const newIndex = combos.findIndex((c) => c.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = arrayMove(combos, oldIndex, newIndex);
+    setCombos(reordered);
+    try {
+      const res = await fetch("/api/combos/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderedIds: reordered.map((c) => c.id) }),
+      });
+      if (!res.ok) console.log("Combo reorder failed:", (await res.json().catch(() => ({}))).error);
+    } catch (error) {
+      console.log("Combo reorder failed:", error);
+    }
+  };
   const [presetLoading, setPresetLoading] = useState(null); // "cursor" | "claude" | null
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -484,28 +510,33 @@ export default function CombosPage() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-3">
-            {(() => {
-              const comboByName = Object.fromEntries(combos.map((c) => [c.name, c.models]));
-              return combos.map((combo) => (
-                <ComboCard
-                  key={combo.id}
-                  combo={combo}
-                  getCaps={getCaps}
-                  comboByName={comboByName}
-                  activeProviders={activeProviders}
-                  copied={copied}
-                  onCopy={copy}
-                  onEdit={() => setEditingCombo(combo)}
-                  onDelete={() => handleDelete(combo.id)}
-                  strategy={comboStrategies[combo.name] || {}}
-                  onSetStrategy={(patch) => handleSetComboStrategy(combo.name, patch)}
-                  selected={selectedIds.includes(combo.id)}
-                  onToggleSelect={() => toggleSelect(combo.id)}
-                />
-              ));
-            })()}
-          </div>
+          <DndContext sensors={comboSensors} collisionDetection={closestCenter} onDragEnd={handleComboDragEnd} modifiers={[restrictToVerticalAxis, restrictToParentElement]}>
+            <SortableContext items={combos.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+              <div className="flex flex-col gap-3">
+                {(() => {
+                  const comboByName = Object.fromEntries(combos.map((c) => [c.name, c.models]));
+                  return combos.map((combo) => (
+                    <SortableComboCard key={combo.id} id={combo.id}>
+                      <ComboCard
+                        combo={combo}
+                        getCaps={getCaps}
+                        comboByName={comboByName}
+                        activeProviders={activeProviders}
+                        copied={copied}
+                        onCopy={copy}
+                        onEdit={() => setEditingCombo(combo)}
+                        onDelete={() => handleDelete(combo.id)}
+                        strategy={comboStrategies[combo.name] || {}}
+                        onSetStrategy={(patch) => handleSetComboStrategy(combo.name, patch)}
+                        selected={selectedIds.includes(combo.id)}
+                        onToggleSelect={() => toggleSelect(combo.id)}
+                      />
+                    </SortableComboCard>
+                  ));
+                })()}
+              </div>
+            </SortableContext>
+          </DndContext>
         </div>
       )}
 
@@ -562,6 +593,32 @@ const fmtK = (n) => {
   }
   return `${Math.round(n / 1000)}k`;
 };
+
+// #4322: drag wrapper around each combo card — grip handle activates the drag,
+// the card itself keeps its normal click behaviour.
+function SortableComboCard({ id, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 20 : undefined,
+    opacity: isDragging ? 0.85 : undefined,
+  };
+  return (
+    <div ref={setNodeRef} style={style} className="group/combo relative">
+      <button
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder"
+        className="absolute -left-6 top-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing text-text-muted/50 hover:text-text-main opacity-0 group-hover/combo:opacity-100 transition-opacity"
+        onClick={(e) => e.preventDefault()}
+      >
+        <span className="material-symbols-outlined text-[18px]">drag_indicator</span>
+      </button>
+      {children}
+    </div>
+  );
+}
 
 function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, selected = false, onToggleSelect }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);

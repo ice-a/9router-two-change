@@ -92,6 +92,8 @@ export const TABLES = {
       name: "TEXT UNIQUE NOT NULL",
       kind: "TEXT",
       models: "TEXT NOT NULL",
+      // #4322: explicit list order; NULL keeps legacy createdAt ordering.
+      priority: "INTEGER",
       createdAt: "TEXT NOT NULL",
       updatedAt: "TEXT NOT NULL",
     },
