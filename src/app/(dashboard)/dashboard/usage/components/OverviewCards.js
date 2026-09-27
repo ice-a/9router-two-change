@@ -7,8 +7,10 @@ const fmt = (n) => new Intl.NumberFormat().format(n || 0);
 const fmtCost = (n) => `$${(n || 0).toFixed(2)}`;
 
 export default function OverviewCards({ stats }) {
+  const tps = stats.tokensPerSecond;
+  const tpsDisplay = tps != null ? tps.toFixed(1) : "—";
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 sm:gap-4">
+    <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 sm:gap-4">
       <Card className="flex min-w-0 flex-col items-center text-center gap-1 px-3 py-3 sm:px-4">
         <span className="text-text-muted text-xs uppercase font-semibold sm:text-sm">Total Requests</span>
         <span className="w-full truncate text-lg font-bold xl:text-xl" title={fmt(stats.totalRequests)}>{fmt(stats.totalRequests)}</span>
@@ -24,6 +26,14 @@ export default function OverviewCards({ stats }) {
       <Card className="flex min-w-0 flex-col items-center text-center gap-1 px-3 py-3 sm:px-4">
         <span className="text-text-muted text-xs uppercase font-semibold sm:text-sm">Output Tokens</span>
         <span className="w-full truncate text-lg font-bold text-success xl:text-xl" title={fmt(stats.totalCompletionTokens)}>{fmt(stats.totalCompletionTokens)}</span>
+      </Card>
+      {/* #3761: average generation throughput from requestDetails — needs observability on */}
+      <Card className="flex min-w-0 flex-col items-center text-center gap-1 px-3 py-3 sm:px-4">
+        <span className="text-text-muted text-xs uppercase font-semibold sm:text-sm">Throughput</span>
+        <span className="w-full truncate text-lg font-bold text-accent xl:text-xl" title={tps != null ? `${tpsDisplay} tok/s avg` : "Enable observability to collect latency data"}>
+          {tpsDisplay}
+        </span>
+        <span className="text-[10px] text-text-muted">tok/s avg{stats.throughputSamples ? ` · ${fmt(stats.throughputSamples)} req` : ""}</span>
       </Card>
       <Card className="flex min-w-0 flex-col items-center text-center gap-1 px-3 py-3 sm:px-4">
         <span className="text-text-muted text-xs uppercase font-semibold sm:text-sm">Est. Cost</span>

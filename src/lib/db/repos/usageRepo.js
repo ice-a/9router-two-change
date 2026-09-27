@@ -662,6 +662,20 @@ export async function getUsageStats(period = "all") {
   }
 
   stats.totalRequests = Object.values(stats.byProvider).reduce((sum, p) => sum + (p.requests || 0), 0);
+
+  // #3761: average generation throughput (completion tok/s) from requestDetails.
+  // Per-request latency only exists there — null when observability is off or
+  // no usable samples exist in the window.
+  try {
+    const { getThroughputStats } = await import("./requestDetailsRepo.js");
+    const windowMs = PERIOD_MS[period] || (period === "all" ? 30 * 86400000 : 86400000);
+    const throughput = await getThroughputStats({ sinceMs: windowMs });
+    if (throughput) {
+      stats.tokensPerSecond = Math.round(throughput.tokensPerSecond * 10) / 10;
+      stats.throughputSamples = throughput.samples;
+    }
+  } catch { /* stats must not fail over throughput */ }
+
   return stats;
 }
 
