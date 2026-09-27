@@ -31,6 +31,8 @@
 | Gemini / Antigravity | 以 assistant turn 结尾的对话必现 400（#4345） | 自动补全 functionResponse / "Continue." 用户轮 |
 | Step 3.7 视觉 | 图像被剥离并换到非视觉兜底模型（#3590） | 保留视觉 |
 | 上游 200 带错误体 | NVIDIA ResourceExhausted 时返回 HTTP 200 + `choices:null`，客户端收到"成功的空响应"（#2727） | 映射回 429/502 正确错误 |
+| Responses 工具调用容错 | `function_call_output` 丢 `call_id` 时整条请求被所有严格上游 400，combo 全灭（#4091） | 按顺序配对补齐 id，孤儿输出丢弃，聊天式 tool 消息打捞为用户备注 |
+| 隧道自愈 | 只测 relay URL，60s 超时即放弃；watchdog 见进程活着就不重启（#3412） | relay/直连任一可达即成功；watchdog 探测可达性，僵尸 cloudflared 会被重启 |
 | Windows 构建 | better-sqlite3 v12 prebuild 静默跳过，`npm run build` 失败 | 升级 v13，开箱可构建 |
 
 **已移除（非运行时）**：`gitbook/` 文档站、多语言 README、`cli/` 托盘启动器、`.github/` CI、`captain-definition`——均可从 git 历史恢复。完整上游文档见 [官方 README](https://github.com/decolua/9router#readme)。
