@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Card, Button, Toggle, Input } from "@/shared/components";
+import { Card, Button, Toggle, Input, Select } from "@/shared/components";
 import Modal, { ConfirmModal } from "@/shared/components/Modal";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
 import { useTheme } from "@/shared/hooks/useTheme";
@@ -1446,15 +1446,21 @@ export default function ProfilePage() {
           <div className="flex flex-col gap-4">
             <div className="flex items-start sm:items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm sm:text-base">Round Robin</p>
+                <p className="font-medium text-sm sm:text-base">Account Strategy</p>
                 <p className="text-xs sm:text-sm text-text-muted">
-                  Cycle through accounts to distribute load
+                  Fill First = priority order · Round Robin = distribute load · Fastest = lowest recent latency
                 </p>
               </div>
-              <Toggle
-                checked={settings.fallbackStrategy === "round-robin"}
-                onChange={() => updateFallbackStrategy(settings.fallbackStrategy === "round-robin" ? "fill-first" : "round-robin")}
+              <Select
+                value={settings.fallbackStrategy === "round-robin" || settings.fallbackStrategy === "fastest" ? settings.fallbackStrategy : "fill-first"}
+                onChange={(e) => updateFallbackStrategy(e.target.value)}
                 disabled={loading}
+                options={[
+                  { value: "fill-first", label: "Fill First" },
+                  { value: "round-robin", label: "Round Robin" },
+                  { value: "fastest", label: "Fastest" },
+                ]}
+                className="w-36 shrink-0"
               />
             </div>
 
@@ -1518,7 +1524,9 @@ export default function ProfilePage() {
             <p className="text-xs text-text-muted italic pt-2 border-t border-border/50">
               {settings.fallbackStrategy === "round-robin"
                 ? `Currently distributing requests across all available accounts with ${settings.stickyRoundRobinLimit || 3} calls per account.`
-                : "Currently using accounts in priority order (Fill First)."}
+                : settings.fallbackStrategy === "fastest"
+                  ? "Currently routing to the account with the lowest recent latency (needs observability; falls back to priority order without samples)."
+                  : "Currently using accounts in priority order (Fill First)."}
               {settings.comboStrategy === "round-robin"
                 ? ` Combos rotate after ${settings.comboStickyRoundRobinLimit || 1} call${(settings.comboStickyRoundRobinLimit || 1) === 1 ? "" : "s"} per model.`
                 : " Combos always start with their first model."}

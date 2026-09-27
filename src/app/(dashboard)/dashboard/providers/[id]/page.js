@@ -411,6 +411,15 @@ export default function ProviderDetailPage() {
     saveProviderStrategy(strategy, sticky);
   };
 
+  // #3072: strategy picker covers fill-first (unset), round-robin, fastest.
+  const handleStrategyChange = (value) => {
+    const strategy = value || null;
+    const sticky = strategy === "round-robin" ? (providerStickyLimit || "1") : providerStickyLimit;
+    if (strategy === "round-robin" && !providerStickyLimit) setProviderStickyLimit("1");
+    setProviderStrategy(strategy);
+    saveProviderStrategy(strategy, sticky);
+  };
+
   const handleStickyLimitChange = (value) => {
     setProviderStickyLimit(value);
     saveProviderStrategy("round-robin", value);
@@ -1557,13 +1566,18 @@ export default function ProviderDetailPage() {
                   )}
                 </>
               )}
-              {/* Round Robin toggle */}
+              {/* Account strategy picker (#3072): fill-first / round-robin / fastest */}
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-text-muted font-medium">Round Robin</span>
-                <Toggle
-                  checked={providerStrategy === "round-robin"}
-                  onChange={handleRoundRobinToggle}
-                />
+                <span className="text-xs text-text-muted font-medium">Strategy</span>
+                <select
+                  value={providerStrategy === "round-robin" || providerStrategy === "fastest" ? providerStrategy : ""}
+                  onChange={(e) => handleStrategyChange(e.target.value)}
+                  className="px-2 py-1 text-xs border border-border rounded-md bg-background focus:outline-none focus:border-primary"
+                >
+                  <option value="">Fill First</option>
+                  <option value="round-robin">Round Robin</option>
+                  <option value="fastest">Fastest</option>
+                </select>
                 {providerStrategy === "round-robin" && (
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-text-muted">Sticky:</span>

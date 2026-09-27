@@ -35,7 +35,7 @@ export {
 // Combos
 export {
   getCombos, getComboById, getComboByName,
-  createCombo, updateCombo, deleteCombo,
+  createCombo, updateCombo, deleteCombo, reorderCombos,
 } from "./repos/combosRepo.js";
 
 // Aliases (model + custom + mitm)
@@ -65,6 +65,7 @@ export {
 // Request details
 export {
   saveRequestDetail, getRequestDetails, getRequestDetailById, getDistinctProviders,
+  getConnectionLatencyStats, getThroughputStats,
 } from "./repos/requestDetailsRepo.js";
 
 // Export/import full DB

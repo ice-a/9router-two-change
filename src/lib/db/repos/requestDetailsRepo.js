@@ -204,6 +204,76 @@ export async function getRequestDetailById(id) {
   return row ? parseJson(row.data, null) : null;
 }
 
+/**
+ * Recent per-connection latency averages from requestDetails (#3072).
+ * latency lives inside the JSON `data` column, so rows are parsed in JS —
+ * the row LIMIT keeps that bounded. Successful requests only; a row's ttft
+ * is preferred, falling back to its total latency.
+ * @returns {Promise<Map<string, { avgMs: number, samples: number }>>}
+ */
+export async function getConnectionLatencyStats({ provider, sinceMs = 24 * 60 * 60 * 1000, limit = 300 } = {}) {
+  const db = await getAdapter();
+  const since = new Date(Date.now() - sinceMs).toISOString();
+  const rows = db.all(
+    `SELECT connectionId, data FROM requestDetails
+     WHERE timestamp >= ? AND status = 'success' AND connectionId IS NOT NULL
+       ${provider ? "AND provider = ?" : ""}
+     ORDER BY timestamp DESC LIMIT ?`,
+    provider ? [since, provider, limit] : [since, limit]
+  );
+
+  const acc = new Map(); // connectionId → { sum, samples }
+  for (const row of rows) {
+    const detail = parseJson(row.data, null);
+    if (!detail) continue;
+    const latency = detail.latency || {};
+    // ttft 0 usually means "not captured" (non-streaming rows) — total is the honest number then.
+    const ms = latency.ttft > 0 ? latency.ttft : (latency.total > 0 ? latency.total : 0);
+    if (!(ms > 0)) continue;
+    const entry = acc.get(row.connectionId) || { sum: 0, samples: 0 };
+    entry.sum += ms;
+    entry.samples += 1;
+    acc.set(row.connectionId, entry);
+  }
+
+  const stats = new Map();
+  for (const [connectionId, { sum, samples }] of acc) {
+    stats.set(connectionId, { avgMs: sum / samples, samples });
+  }
+  return stats;
+}
+
+/**
+ * Aggregate throughput (completion tokens per second of generation) over the
+ * recent requestDetails window (#3761). Returns null when no usable samples.
+ * @returns {Promise<{ tokensPerSecond: number, samples: number } | null>}
+ */
+export async function getThroughputStats({ sinceMs = 24 * 60 * 60 * 1000, limit = 1000 } = {}) {
+  const db = await getAdapter();
+  const since = new Date(Date.now() - sinceMs).toISOString();
+  const rows = db.all(
+    `SELECT data FROM requestDetails
+     WHERE timestamp >= ? AND status = 'success'
+     ORDER BY timestamp DESC LIMIT ?`,
+    [since, limit]
+  );
+
+  let sumTps = 0;
+  let samples = 0;
+  for (const row of rows) {
+    const detail = parseJson(row.data, null);
+    if (!detail) continue;
+    const completion = Number(detail.tokens?.completion_tokens) || 0;
+    const totalMs = Number(detail.latency?.total) || 0;
+    if (completion <= 0 || totalMs <= 0) continue;
+    sumTps += completion / (totalMs / 1000);
+    samples += 1;
+  }
+
+  if (samples === 0) return null;
+  return { tokensPerSecond: sumTps / samples, samples };
+}
+
 const _shutdownHandler = async () => {
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
   if (writeBuffer.length > 0) await flushToDatabase();

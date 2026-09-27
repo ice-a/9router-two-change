@@ -1,5 +1,6 @@
-import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
+import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools, getConnectionLatencyStats } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
+import { rankConnectionsByLatency } from "./latencyStrategy.js";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
@@ -149,6 +150,20 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     }
     if (connection) {
       // skip strategy
+    } else if (strategy === "fastest") {
+      // #3072: rank by recent latency from requestDetails. Falls back to the
+      // priority order when observability is off or no samples exist yet.
+      try {
+        const stats = await getConnectionLatencyStats({ provider: providerId });
+        const ranked = rankConnectionsByLatency(availableConnections, stats);
+        connection = ranked[0];
+        if (ranked.length > 1 && log?.debug) {
+          log.debug("AUTH", `${provider} | fastest strategy → ${connection.id?.slice(0, 8)} (${ranked.map((c) => c.id?.slice(0, 8)).join(",")})`);
+        }
+      } catch (err) {
+        log?.warn?.("AUTH", `${provider} | fastest strategy failed (${err?.message || err}) → fill-first`);
+        connection = availableConnections[0];
+      }
     } else if (strategy === "round-robin") {
       const stickyLimit = providerOverride.stickyRoundRobinLimit || settings.stickyRoundRobinLimit || 3;
 
