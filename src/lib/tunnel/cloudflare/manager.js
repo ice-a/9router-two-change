@@ -1,7 +1,7 @@
 import { loadState, saveState, generateShortId } from "../shared/state.js";
 import { spawnQuickTunnel, killCloudflared, isCloudflaredRunning, setUnexpectedExitHandler } from "./cloudflared.js";
 import { clearPid } from "./pid.js";
-import { waitForHealth, probeUrlAlive } from "./healthCheck.js";
+import { waitForTunnelHealth, probeUrlAlive } from "./healthCheck.js";
 import { WORKER_URL } from "./config.js";
 import { getSettings, updateSettings } from "@/lib/localDb";
 
@@ -87,14 +87,13 @@ export async function enableTunnel(localPort = 20128) {
     await updateSettings({ tunnelEnabled: true, tunnelUrl });
     console.log(`[Tunnel] registered shortId=${shortId} publicUrl=${publicUrl}`);
 
-    // Verify publicUrl first (worker route is reliable; direct *.trycloudflare.com DNS may lag)
-    await waitForHealth(publicUrl, token);
-    console.log("[Tunnel] public URL healthy");
-    // Direct tunnel probe is best-effort: DNS for *.trycloudflare.com can be slow/blocked
-    if (!(await probeUrlAlive(tunnelUrl))) {
-      console.warn("[Tunnel] direct URL not reachable yet, continuing via publicUrl");
+    // #3412: either URL proving healthy is enough — the relay route is primary,
+    // but relay mapping can lag while the direct URL already serves.
+    const healthVia = await waitForTunnelHealth(publicUrl, tunnelUrl, token);
+    if (healthVia.via === "public") {
+      console.log("[Tunnel] public URL healthy");
     } else {
-      console.log("[Tunnel] direct URL healthy");
+      console.warn("[Tunnel] direct URL healthy, relay mapping still propagating — enable continues");
     }
 
     console.log("[Tunnel] enable success");

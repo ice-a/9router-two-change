@@ -10,6 +10,7 @@ import {
   killCloudflared, isCloudflaredRunning, ensureCloudflared,
   isTailscaleRunning, isTailscaleRunningStrict, isDaemonAlive, startFunnel,
   checkInternet,
+  probeCloudflareAlive,
   RESTART_COOLDOWN_MS, NETWORK_SETTLE_MS,
   WATCHDOG_INTERVAL_MS, NETWORK_CHECK_INTERVAL_MS, VIRTUAL_IFACE_REGEX,
 } from "@/lib/tunnel";
@@ -173,9 +174,16 @@ async function safeRestartTunnel(reason) {
 
   const force = FORCE_RESTART_REASONS.test(reason);
 
-  // Process alive = trust cloudflared (self-reconnects via --retries 99, keeps same URL).
-  // Killing a live process on network change drops the tunnel and rotates the quick-tunnel URL.
-  if (isCloudflaredRunning()) return;
+  // Process alive is no longer blind trust (#3412): a cloudflared whose edge
+  // connections died (sleep, network change, expired DNS) stays alive while
+  // the tunnel serves nothing. When the direct URL is known, verify it; a
+  // process that is alive but unreachable falls through to the restart path.
+  if (isCloudflaredRunning()) {
+    if (!settings.tunnelUrl) return; // no URL to verify — keep the legacy trust
+    const reachable = await probeCloudflareAlive(settings.tunnelUrl);
+    if (reachable) return;
+    console.warn(`[Tunnel] cloudflared alive but tunnel URL unreachable (${reason}) — restarting`);
+  }
 
   if (!force && Date.now() - svc.lastRestartAt < RESTART_COOLDOWN_MS) {
     console.log(`[Tunnel] degraded but cooldown active, skip (${reason})`);

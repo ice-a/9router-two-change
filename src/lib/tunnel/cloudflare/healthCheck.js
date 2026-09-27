@@ -27,3 +27,22 @@ export async function waitForHealth(url, cancelToken = { cancelled: false }) {
   }
   throw new Error(`Health check timeout after ${HEALTH_CHECK.timeoutMs}ms`);
 }
+
+// #3412: the relay mapping (abc-tunnel.us) can lag minutes behind tunnel
+// registration while the direct *.trycloudflare.com URL is already serving —
+// failing the whole enable on a relay-only 60s timeout declared dead tunnels
+// that were fine. Either URL answering healthy is enough to succeed.
+export async function waitForTunnelHealth(publicUrl, directUrl, cancelToken = { cancelled: false }) {
+  const start = Date.now();
+  while (Date.now() - start < HEALTH_CHECK.timeoutMs) {
+    if (cancelToken.cancelled) throw new Error("cancelled");
+    const [publicOk, directOk] = await Promise.all([
+      probeUrlAlive(publicUrl),
+      probeUrlAlive(directUrl),
+    ]);
+    if (publicOk) return { via: "public" };
+    if (directOk) return { via: "direct" };
+    await new Promise((r) => setTimeout(r, HEALTH_CHECK.intervalMs));
+  }
+  throw new Error(`Health check timeout after ${HEALTH_CHECK.timeoutMs}ms`);
+}
