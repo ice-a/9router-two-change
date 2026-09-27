@@ -15,6 +15,7 @@ import { resolveClinepassModels, resolveClineModels } from "open-sse/services/cl
 import { resolveGrokCliModels } from "open-sse/services/grokCliModels.js";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { resolveZedModels } from "open-sse/shared/zedAuth.js";
+import { resolveNvidiaModels } from "open-sse/services/nvidiaModels.js";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { capabilitiesFromServiceKind, getCapabilitiesForModel, aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
@@ -138,6 +139,26 @@ const LIVE_MODEL_RESOLVERS = {
           capabilities: m.supportsTools ? { tools: true } : undefined,
         })),
     };
+  },
+  // #3398: NIM's catalog rotates fast and the static registry list goes stale —
+  // serve the live /v1/models list (chat models only, TTL-cached) and route the
+  // fetch through the connection's proxy/relay config like every other egress.
+  nvidia: async (conn) => {
+    const proxy = await resolveConnectionProxyConfig(conn.providerSpecificData || {});
+    const result = await resolveNvidiaModels(
+      { apiKey: conn.apiKey },
+      {
+        log: console,
+        proxyOptions: {
+          connectionProxyEnabled: proxy.connectionProxyEnabled === true,
+          connectionProxyUrl: proxy.connectionProxyUrl || "",
+          connectionNoProxy: proxy.connectionNoProxy || "",
+          vercelRelayUrl: proxy.vercelRelayUrl || "",
+          strictProxy: proxy.strictProxy === true,
+        },
+      },
+    );
+    return result?.models?.length ? { models: result.models } : null;
   },
 };
 
