@@ -6,6 +6,9 @@
 - **NVIDIA NIM** (#3398): pull the live `/v1/models` catalog for the dashboard model picker (`modelsFetcher` + `passthroughModels`), refresh the curated defaults to what is actually live (kimi-k3, glm-5.3/5.3-flash, deepseek-v4.1-flash, nemotron-3.5 lightning…), and drop models retired from NIM
 - **NVIDIA NIM** (#3398): `/v1/models` now serves the live NIM catalog (chat models only, 10-min TTL cache, fetched through the connection's proxy/relay config) so CLI clients see new models without waiting for registry updates
 - **Relay pool test**: two-stage test (contract probe + real forwarded round-trip through `cloudflare.com/cdn-cgi/trace`) replacing the flaky httpbin.org target whose failures auto-deactivated healthy pools; the test now reports the relay's exit IP
+- **Fastest strategy** (#3072): new "fastest" fallback strategy ranks a provider's available accounts by recent latency (TTFT from requestDetails, 24h window) so the snappiest account serves the next request; falls back to priority order when no samples exist. Selectable globally and per provider
+- **Combo ordering** (#4322): drag to reorder the combo list — order persists in a new `combos.priority` column (auto-migrated) and drives list rendering
+- **Throughput metric** (#3761): Usage & Analytics gains an average generation throughput card (completion tok/s over the selected period, from requestDetails — needs observability enabled)
 - **Relay deploys** (#1037): probe the relay contract right after Vercel/Cloudflare/Deno deployment and before saving the pool; a failed Vercel deployment-protection PATCH now aborts with a clear message instead of saving a relay that answers 403
 
 ## Fixes
